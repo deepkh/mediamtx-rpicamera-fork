@@ -7,3 +7,12 @@
 !/subprojects/openssl.wrap
 !/subprojects/libjpeg-turbo.wrap
 !/subprojects/openh264.wrap
+
+# Editor and local tool directories
+/.vscode/
+/.codex
+/AGENTS.md
+
+# OS clutter
+.DS_Store
+Thumbs.db
