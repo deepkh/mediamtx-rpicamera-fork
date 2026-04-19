@@ -3,107 +3,67 @@ name: release
 on:
   push:
     tags:
-    - 'v*'
+      - 'v*'
+  workflow_dispatch:
 
 permissions:
-  id-token: write
-  attestations: write
-  artifact-metadata: write
   contents: write
 
 jobs:
-  build_32:
-    runs-on: ubuntu-22.04
+  build_arm64:
+    name: build arm64 binary
+    runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v6
 
-    - run: make -f utils.mk build_32
+      - name: Set up QEMU for ARM64 containers
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
-    - run: cd build && tar -czf mtxrpicam_32.tar.gz mtxrpicam_32
+      - name: Build with build.sh inside Debian 13 ARM64
+        run: |
+          docker run --rm \
+            --platform linux/arm64 \
+            -v "${GITHUB_WORKSPACE}:/src" \
+            -w /src \
+            debian:trixie-slim \
+            bash -lc './build.sh --clean'
 
-    - uses: actions/upload-artifact@v7
-      with:
-        path: build/mtxrpicam_32.tar.gz
-        name: mtxrpicam_32.tar.gz
+      - name: Package release assets
+        run: |
+          mkdir -p release
+          cp prefix/bin/mtxrpicam release/mtxrpicam_linux_arm64
+          tar -C release -czf release/mtxrpicam_linux_arm64.tar.gz mtxrpicam_linux_arm64
+          sha256sum release/mtxrpicam_linux_arm64 release/mtxrpicam_linux_arm64.tar.gz > release/sha256sum.txt
 
-  build_64:
-    runs-on: ubuntu-22.04
-
-    steps:
-    - uses: actions/checkout@v6
-
-    - run: make -f utils.mk build_64
-
-    - run: cd build && tar -czf mtxrpicam_64.tar.gz mtxrpicam_64
-
-    - uses: actions/upload-artifact@v7
-      with:
-        path: build/mtxrpicam_64.tar.gz
-        name: mtxrpicam_64.tar.gz
-
-  pre_release:
-    needs:
-    - build_32
-    - build_64
-    runs-on: ubuntu-22.04
-
-    steps:
-    - uses: actions/download-artifact@v8
-      with:
-        name: mtxrpicam_32.tar.gz
-        path: binaries/
-
-    - uses: actions/download-artifact@v8
-      with:
-        name: mtxrpicam_64.tar.gz
-        path: binaries/
-
-    - run: cd binaries && sha256sum -b * > checksums.sha256
-
-    - uses: actions/attest@v4
-      with:
-        subject-path: '${{ github.workspace }}/binaries/*'
-
-    - uses: actions/upload-artifact@v7
-      with:
-        name: binaries
-        path: binaries
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: release/*
+          if-no-files-found: error
 
   github_release:
-    needs:
-    - pre_release
-    runs-on: ubuntu-22.04
+    name: publish github release
+    needs: build_arm64
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
 
     steps:
-    - uses: actions/download-artifact@v8
-      with:
-        name: binaries
-        path: binaries
+      - name: Download workflow artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: release-assets
+          path: release
 
-    - uses: actions/github-script@v8
-      with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        script: |
-          const fs = require('fs').promises;
-          const { repo: { owner, repo } } = context;
-
-          const currentRelease = context.ref.split('/')[2];
-
-          const res = await github.rest.repos.createRelease({
-            owner,
-            repo,
-            tag_name: currentRelease,
-            name: currentRelease,
-          });
-          const release_id = res.data.id;
-
-          for (const name of await fs.readdir('./binaries/')) {
-            await github.rest.repos.uploadReleaseAsset({
-              owner,
-              repo,
-              release_id,
-              name,
-              data: await fs.readFile(`./binaries/${name}`),
-            });
-          }
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v3
+        with:
+          generate_release_notes: true
+          files: |
+            release/mtxrpicam_linux_arm64
+            release/mtxrpicam_linux_arm64.tar.gz
+            release/sha256sum.txt
