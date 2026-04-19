@@ -8,6 +8,7 @@ Usage: ./build.sh [options]
 Build mediamtx-rpicamera on a Raspberry Pi running Debian 13 / Raspberry Pi OS Trixie.
 
 Options:
+  --build-camera       Rebuild only repo source files with the existing Meson/Ninja setup.
   --external-libcamera  Build against the system libcamera instead of the bundled fallback.
   --skip-packages       Do not install apt packages.
   --clean               Remove previous build artifacts before configuring.
@@ -22,9 +23,13 @@ PREFIX_DIR="${SCRIPT_DIR}/prefix"
 INSTALL_PACKAGES=1
 USE_EXTERNAL_LIBCAMERA=0
 CLEAN_BUILD=0
+BUILD_CAMERA_ONLY=0
 
 while (($# > 0)); do
     case "$1" in
+        --build-camera)
+            BUILD_CAMERA_ONLY=1
+            ;;
         --external-libcamera)
             USE_EXTERNAL_LIBCAMERA=1
             ;;
@@ -122,10 +127,35 @@ configure_build() {
     fi
 }
 
+print_output_path() {
+    if [[ "$(gcc -dumpmachine)" == "aarch64-linux-gnu" ]]; then
+        echo "Build complete: ${BUILD_DIR}/mtxrpicam_64/mtxrpicam"
+    else
+        echo "Build complete: ${BUILD_DIR}/mtxrpicam_32/mtxrpicam"
+    fi
+}
+
+build_camera() {
+    if [[ ! -f "${BUILD_DIR}/build.ninja" ]]; then
+        echo "Existing build directory not found: ${BUILD_DIR}" >&2
+        echo "Run ./build.sh once before using --build-camera." >&2
+        exit 1
+    fi
+
+    rm -rf "${PREFIX_DIR}"
+    DESTDIR="${PREFIX_DIR}" ninja -C "${BUILD_DIR}" mtxrpicam install
+    print_output_path
+}
+
 main() {
     cd "${SCRIPT_DIR}"
 
     check_environment
+
+    if ((BUILD_CAMERA_ONLY)); then
+        build_camera
+        exit 0
+    fi
 
     if ((INSTALL_PACKAGES)); then
         install_packages
@@ -139,12 +169,7 @@ main() {
 
     rm -rf "${PREFIX_DIR}"
     DESTDIR="${PREFIX_DIR}" ninja -C "${BUILD_DIR}" install
-
-    if [[ "$(gcc -dumpmachine)" == "aarch64-linux-gnu" ]]; then
-        echo "Build complete: ${BUILD_DIR}/mtxrpicam_64/mtxrpicam"
-    else
-        echo "Build complete: ${BUILD_DIR}/mtxrpicam_32/mtxrpicam"
-    fi
+    print_output_path
 }
 
 main "$@"
