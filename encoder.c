@@ -11,6 +11,7 @@
 #include "encoder.h"
 #include "encoder_hardware_h264.h"
 #include "encoder_software_h264.h"
+#include "git_commit.h"
 
 static char errbuf[256];
 
@@ -64,6 +65,10 @@ bool encoder_create(const parameters_t *params, int stride, int colorspace,
     *enc = malloc(sizeof(encoder_priv_t));
     encoder_priv_t *encp = (encoder_priv_t *)(*enc);
     memset(encp, 0, sizeof(encoder_priv_t));
+
+    printf("=======================================\n");
+    printf("=== mediamtx-rpicamera-fork commit: %s\n", GIT_COMMIT);
+    printf("=======================================\n");
 
     bool hardH264;
 

@@ -94,6 +94,18 @@ text_font = custom_target(
     command : ['./text_font.sh']
 )
 
+git_log = run_command('git', 'log', '--oneline', '-1', check : false)
+git_commit_conf = configuration_data()
+git_commit_conf.set(
+    'GIT_COMMIT',
+    git_log.returncode() == 0 ? git_log.stdout().strip() : 'unavailable'
+)
+git_commit_header = configure_file(
+    input : 'git_commit.h.in',
+    output : 'git_commit.h',
+    configuration : git_commit_conf
+)
+
 sources = [
     'base64.c',
     'camera.cpp',
@@ -107,7 +119,8 @@ sources = [
     'sensor_mode.c',
     'text.c',
     'window.c',
-    text_font
+    text_font,
+    git_commit_header
 ]
 
 mtxrpicam = executable(
