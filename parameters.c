@@ -9,6 +9,85 @@
 
 static char errbuf[256];
 
+static const char *dump_str(const char *val) {
+    return (val != NULL) ? val : "(null)";
+}
+
+static void dump_window(const char *name, const window_t *window) {
+    if (window == NULL) {
+        printf("%s: (null)\n", name);
+        return;
+    }
+
+    printf("%s: x=%f y=%f width=%f height=%f\n", name, window->x, window->y,
+           window->width, window->height);
+}
+
+static void dump_sensor_mode(const char *name, const sensor_mode_t *mode) {
+    if (mode == NULL) {
+        printf("%s: (null)\n", name);
+        return;
+    }
+
+    printf("%s: width=%u height=%u bit_depth=%u packed=%d\n", name, mode->width,
+           mode->height, mode->bit_depth, mode->packed);
+}
+
+static void dump_parameters(const parameters_t *params) {
+    printf("parameters_unserialize params:\n");
+    printf("  log_level: %s\n", dump_str(params->log_level));
+    printf("  camera_id: %u\n", params->camera_id);
+    printf("  width: %u\n", params->width);
+    printf("  height: %u\n", params->height);
+    printf("  h_flip: %d\n", params->h_flip);
+    printf("  v_flip: %d\n", params->v_flip);
+    printf("  brightness: %f\n", params->brightness);
+    printf("  contrast: %f\n", params->contrast);
+    printf("  saturation: %f\n", params->saturation);
+    printf("  sharpness: %f\n", params->sharpness);
+    printf("  exposure: %s\n", dump_str(params->exposure));
+    printf("  awb: %s\n", dump_str(params->awb));
+    printf("  awb_gain_red: %f\n", params->awb_gain_red);
+    printf("  awb_gain_blue: %f\n", params->awb_gain_blue);
+    printf("  denoise: %s\n", dump_str(params->denoise));
+    printf("  shutter: %u\n", params->shutter);
+    printf("  metering: %s\n", dump_str(params->metering));
+    printf("  gain: %f\n", params->gain);
+    printf("  ev: %f\n", params->ev);
+    printf("  ");
+    dump_window("roi", params->roi);
+    printf("  hdr: %d\n", params->hdr);
+    printf("  tuning_file: %s\n", dump_str(params->tuning_file));
+    printf("  ");
+    dump_sensor_mode("mode", params->mode);
+    printf("  fps: %f\n", params->fps);
+    printf("  af_mode: %s\n", dump_str(params->af_mode));
+    printf("  af_range: %s\n", dump_str(params->af_range));
+    printf("  af_speed: %s\n", dump_str(params->af_speed));
+    printf("  lens_position: %f\n", params->lens_position);
+    printf("  ");
+    dump_window("af_window", params->af_window);
+    printf("  flicker_period: %u\n", params->flicker_period);
+    printf("  text_overlay_enable: %d\n", params->text_overlay_enable);
+    printf("  text_overlay: %s\n", dump_str(params->text_overlay));
+    printf("  codec: %s\n", dump_str(params->codec));
+    printf("  idr_period: %u\n", params->idr_period);
+    printf("  bitrate: %u\n", params->bitrate);
+    printf("  hardware_h264_profile: %s\n",
+           dump_str(params->hardware_h264_profile));
+    printf("  hardware_h264_level: %s\n",
+           dump_str(params->hardware_h264_level));
+    printf("  software_h264_profile: %s\n",
+           dump_str(params->software_h264_profile));
+    printf("  software_h264_level: %s\n",
+           dump_str(params->software_h264_level));
+    printf("  secondary_width: %u\n", params->secondary_width);
+    printf("  secondary_height: %u\n", params->secondary_height);
+    printf("  secondary_fps: %f\n", params->secondary_fps);
+    printf("  secondary_mjpeg_quality: %u\n", params->secondary_mjpeg_quality);
+    printf("  buffer_count: %u\n", params->buffer_count);
+}
+
 static void set_error(const char *format, ...) {
     va_list args;
     va_start(args, format);
@@ -154,7 +233,9 @@ bool parameters_unserialize(const uint8_t *buf, size_t buf_size,
     free(copy);
 
     (*params)->buffer_count = 3;
-
+#if 1
+    dump_parameters(*params);
+#endif
     return true;
 
 failed:
