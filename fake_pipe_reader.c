@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 static volatile sig_atomic_t stopped = 0;
@@ -107,24 +108,35 @@ static void prepend_ld_library_path(const char *path) {
 }
 
 static void set_libpisp_config_file(void) {
-    static const char suffix[] =
-        "/build/subprojects/libpisp/src/libpisp/backend/"
-        "backend_default_config.json";
+    static const char *candidates[] = {
+        "./build/subprojects/libpisp/src/libpisp/backend/"
+        "backend_default_config.json",
+        "./subprojects/libpisp/src/libpisp/backend/backend_default_config.json",
+    };
     char *cwd = getcwd(NULL, 0);
 
     if (cwd == NULL) {
         return;
     }
 
-    char *path = malloc(strlen(cwd) + strlen(suffix) + 1);
-    if (path == NULL) {
-        free(cwd);
-        return;
+    for (unsigned int i = 0; i < sizeof(candidates) / sizeof(candidates[0]);
+         i++) {
+        if (access(candidates[i], R_OK) != 0) {
+            continue;
+        }
+
+        char *path = malloc(strlen(cwd) + 1 + strlen(candidates[i]) + 1);
+        if (path == NULL) {
+            free(cwd);
+            return;
+        }
+
+        sprintf(path, "%s/%s", cwd, candidates[i]);
+        setenv("LIBPISP_BE_CONFIG_FILE", path, 1);
+        free(path);
+        break;
     }
 
-    sprintf(path, "%s%s", cwd, suffix);
-    setenv("LIBPISP_BE_CONFIG_FILE", path, 1);
-    free(path);
     free(cwd);
 }
 
@@ -281,10 +293,6 @@ static bool write_packet(int fd, char kind, const char *payload) {
            write_full(fd, payload, strlen(payload));
 }
 
-static bool read_packet_header(int fd, uint32_t *size) {
-    return read_full(fd, size, sizeof(*size));
-}
-
 static bool discard_packet_payload(int fd, uint32_t size) {
     uint8_t buf[64 * 1024];
 
@@ -299,14 +307,111 @@ static bool discard_packet_payload(int fd, uint32_t size) {
     return true;
 }
 
+static bool read_video_packet(int fd, char *kind, uint64_t *timestamp) {
+    uint32_t size;
+
+    if (!read_full(fd, &size, sizeof(size)) || size < 1) {
+        return false;
+    }
+
+    if (!read_full(fd, kind, sizeof(*kind))) {
+        return false;
+    }
+    size--;
+
+    *timestamp = 0;
+    if ((*kind == 'd' || *kind == 's') && size >= sizeof(*timestamp)) {
+        if (!read_full(fd, timestamp, sizeof(*timestamp))) {
+            return false;
+        }
+        size -= sizeof(*timestamp);
+    }
+
+    return discard_packet_payload(fd, size);
+}
+
 static void drain_video_pipe(int fd) {
+    uint64_t frame_count = 0;
+    double prev_frame_ts = 0.0;
+    double diff = 0.0;
+    int fps = 0;
+    double diff_times[256] = {0};
+    double diff_values[256] = {0};
+    int fps_values[256] = {0};
+    unsigned int diff_index = 0;
+    unsigned int diff_count = 0;
+
     while (!stopped) {
-        uint32_t size;
-        if (!read_packet_header(fd, &size)) {
+        char kind;
+        uint64_t packet_ts;
+
+        if (!read_video_packet(fd, &kind, &packet_ts)) {
             break;
         }
-        if (!discard_packet_payload(fd, size)) {
-            break;
+        if (kind != 'd') {
+            continue;
+        }
+
+        frame_count++;
+        double now = (double)packet_ts / 1000000.0;
+        if (prev_frame_ts > 0.0) {
+            diff = now - prev_frame_ts;
+            if (diff > 0.0) {
+                fps = (int)((1.0 / diff) + 0.5);
+
+                diff_times[diff_index] = now;
+                diff_values[diff_index] = diff;
+                fps_values[diff_index] = fps;
+                diff_index = (diff_index + 1) %
+                             (sizeof(diff_values) / sizeof(diff_values[0]));
+                if (diff_count < sizeof(diff_values) / sizeof(diff_values[0])) {
+                    diff_count++;
+                }
+            }
+        }
+        prev_frame_ts = now;
+
+        if (frame_count % 10 == 0) {
+            double avg_diff = 0.0;
+            double avg_fps = 0.0;
+            double min_diff = 0.0;
+            double max_diff = 0.0;
+            int min_fps = 0;
+            int max_fps = 0;
+            unsigned int avg_count = 0;
+
+            for (unsigned int i = 0; i < diff_count; i++) {
+                double sample_age = now - diff_times[i];
+
+                if (sample_age >= 0.0 && sample_age <= 2.0 &&
+                    diff_values[i] > 0.0 && fps_values[i] > 0) {
+                    if (avg_count == 0 || diff_values[i] < min_diff) {
+                        min_diff = diff_values[i];
+                    }
+                    if (avg_count == 0 || diff_values[i] > max_diff) {
+                        max_diff = diff_values[i];
+                    }
+                    if (avg_count == 0 || fps_values[i] < min_fps) {
+                        min_fps = fps_values[i];
+                    }
+                    if (avg_count == 0 || fps_values[i] > max_fps) {
+                        max_fps = fps_values[i];
+                    }
+                    avg_diff += diff_values[i];
+                    avg_fps += fps_values[i];
+                    avg_count++;
+                }
+            }
+            if (avg_count > 0) {
+                avg_diff /= avg_count;
+                avg_fps /= avg_count;
+            }
+
+            printf("Frame:%lu, Fps:%d AvgFps:%.1f/%d/%d ts:%.3f "
+                   "Diff:%.3f AvgDiff:%.3f/%.3f/%.3f\n",
+                   frame_count, fps, avg_fps, min_fps, max_fps, now, diff,
+                   avg_diff, min_diff, max_diff);
+            fflush(stdout);
         }
     }
 }
@@ -343,9 +448,11 @@ int main(int argc, char **argv) {
         snprintf(video_fd, sizeof(video_fd), "%d", video_pipe[1]);
         setenv("PIPE_CONF_FD", conf_fd, 1);
         setenv("PIPE_VIDEO_FD", video_fd, 1);
-        prepend_ld_library_path("./build/subprojects/libcamera/src/libcamera/base");
-        prepend_ld_library_path("./build/subprojects/libcamera/src/libcamera");
+        prepend_ld_library_path("./subprojects/libcamera/src/libcamera/base");
         prepend_ld_library_path("./subprojects/libcamera/src/libcamera");
+        prepend_ld_library_path(
+            "./build/subprojects/libcamera/src/libcamera/base");
+        prepend_ld_library_path("./build/subprojects/libcamera/src/libcamera");
         set_libpisp_config_file();
 
         execl(mtxrpicam_path, mtxrpicam_path, NULL);
