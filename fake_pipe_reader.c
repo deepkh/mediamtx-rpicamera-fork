@@ -222,6 +222,21 @@ static bool append_b64_param(char **buf, size_t *len, size_t *cap,
     return ok;
 }
 
+static bool append_env_param(char **buf, size_t *len, size_t *cap,
+                             const char *key, const char *default_value) {
+    const char *value = getenv(key);
+
+    return append_param(buf, len, cap, key, value != NULL ? value : default_value);
+}
+
+static bool append_env_b64_param(char **buf, size_t *len, size_t *cap,
+                                 const char *key, const char *default_value) {
+    const char *value = getenv(key);
+
+    return append_b64_param(buf, len, cap, key,
+                            value != NULL ? value : default_value);
+}
+
 static char *build_parameters(void) {
     char *buf = NULL;
     size_t len = 0;
@@ -229,50 +244,51 @@ static char *build_parameters(void) {
     const char *tuning_file = default_tuning_file();
 
     bool ok =
-        append_b64_param(&buf, &len, &cap, "LogLevel", "info") &&
-        append_param(&buf, &len, &cap, "CameraID", "0") &&
-        append_param(&buf, &len, &cap, "Width", "2304") &&
-        append_param(&buf, &len, &cap, "Height", "1296") &&
-        append_param(&buf, &len, &cap, "HFlip", "1") &&
-        append_param(&buf, &len, &cap, "VFlip", "0") &&
-        append_param(&buf, &len, &cap, "Brightness", "0.0") &&
-        append_param(&buf, &len, &cap, "Contrast", "1.0") &&
-        append_param(&buf, &len, &cap, "Saturation", "1.0") &&
-        append_param(&buf, &len, &cap, "Sharpness", "1.0") &&
-        append_b64_param(&buf, &len, &cap, "Exposure", "short") &&
-        append_b64_param(&buf, &len, &cap, "AWB", "auto") &&
-        append_param(&buf, &len, &cap, "AWBGainRed", "0.0") &&
-        append_param(&buf, &len, &cap, "AWBGainBlue", "0.0") &&
-        append_b64_param(&buf, &len, &cap, "Denoise", "cdn_hq") &&
-        append_param(&buf, &len, &cap, "Shutter", "0") &&
-        append_b64_param(&buf, &len, &cap, "Metering", "centre") &&
-        append_param(&buf, &len, &cap, "Gain", "0.0") &&
-        append_param(&buf, &len, &cap, "EV", "0.0") &&
-        append_b64_param(&buf, &len, &cap, "ROI", "") &&
-        append_param(&buf, &len, &cap, "HDR", "0") &&
-        append_b64_param(&buf, &len, &cap, "TuningFile", tuning_file) &&
-        append_b64_param(&buf, &len, &cap, "Mode", "") &&
-        append_param(&buf, &len, &cap, "FPS", "60.0") &&
-        append_b64_param(&buf, &len, &cap, "AfMode", "manual") &&
-        append_b64_param(&buf, &len, &cap, "AfRange", "normal") &&
-        append_b64_param(&buf, &len, &cap, "AfSpeed", "normal") &&
-        append_param(&buf, &len, &cap, "LensPosition", "0.0") &&
-        append_b64_param(&buf, &len, &cap, "AfWindow", "") &&
-        append_param(&buf, &len, &cap, "FlickerPeriod", "0") &&
-        append_param(&buf, &len, &cap, "TextOverlayEnable", "0") &&
-        append_b64_param(&buf, &len, &cap, "TextOverlay",
-                         "%Y-%m-%d %H:%M:%S - MediaMTX") &&
-        append_b64_param(&buf, &len, &cap, "Codec", "auto") &&
-        append_param(&buf, &len, &cap, "IDRPeriod", "60") &&
-        append_param(&buf, &len, &cap, "Bitrate", "10000000") &&
-        append_b64_param(&buf, &len, &cap, "HardwareH264Profile", "main") &&
-        append_b64_param(&buf, &len, &cap, "HardwareH264Level", "4.1") &&
-        append_b64_param(&buf, &len, &cap, "SoftwareH264Profile", "baseline") &&
-        append_b64_param(&buf, &len, &cap, "SoftwareH264Level", "4.1") &&
-        append_param(&buf, &len, &cap, "SecondaryWidth", "0") &&
-        append_param(&buf, &len, &cap, "SecondaryHeight", "0") &&
-        append_param(&buf, &len, &cap, "SecondaryFPS", "0.0") &&
-        append_param(&buf, &len, &cap, "SecondaryMJPEGQuality", "0");
+        append_env_b64_param(&buf, &len, &cap, "LogLevel", "info") &&
+        append_env_param(&buf, &len, &cap, "CameraID", "0") &&
+        append_env_param(&buf, &len, &cap, "Width", "2304") &&
+        append_env_param(&buf, &len, &cap, "Height", "1296") &&
+        append_env_param(&buf, &len, &cap, "HFlip", "1") &&
+        append_env_param(&buf, &len, &cap, "VFlip", "0") &&
+        append_env_param(&buf, &len, &cap, "Brightness", "0.0") &&
+        append_env_param(&buf, &len, &cap, "Contrast", "1.0") &&
+        append_env_param(&buf, &len, &cap, "Saturation", "1.0") &&
+        append_env_param(&buf, &len, &cap, "Sharpness", "1.0") &&
+        append_env_b64_param(&buf, &len, &cap, "Exposure", "short") &&
+        append_env_b64_param(&buf, &len, &cap, "AWB", "auto") &&
+        append_env_param(&buf, &len, &cap, "AWBGainRed", "0.0") &&
+        append_env_param(&buf, &len, &cap, "AWBGainBlue", "0.0") &&
+        append_env_b64_param(&buf, &len, &cap, "Denoise", "cdn_hq") &&
+        append_env_param(&buf, &len, &cap, "Shutter", "0") &&
+        append_env_b64_param(&buf, &len, &cap, "Metering", "centre") &&
+        append_env_param(&buf, &len, &cap, "Gain", "0.0") &&
+        append_env_param(&buf, &len, &cap, "EV", "0.0") &&
+        append_env_b64_param(&buf, &len, &cap, "ROI", "") &&
+        append_env_param(&buf, &len, &cap, "HDR", "0") &&
+        append_env_b64_param(&buf, &len, &cap, "TuningFile", tuning_file) &&
+        append_env_b64_param(&buf, &len, &cap, "Mode", "") &&
+        append_env_param(&buf, &len, &cap, "FPS", "60.0") &&
+        append_env_b64_param(&buf, &len, &cap, "AfMode", "manual") &&
+        append_env_b64_param(&buf, &len, &cap, "AfRange", "normal") &&
+        append_env_b64_param(&buf, &len, &cap, "AfSpeed", "normal") &&
+        append_env_param(&buf, &len, &cap, "LensPosition", "0.0") &&
+        append_env_b64_param(&buf, &len, &cap, "AfWindow", "") &&
+        append_env_param(&buf, &len, &cap, "FlickerPeriod", "0") &&
+        append_env_param(&buf, &len, &cap, "TextOverlayEnable", "0") &&
+        append_env_b64_param(&buf, &len, &cap, "TextOverlay",
+                             "%Y-%m-%d %H:%M:%S - MediaMTX") &&
+        append_env_b64_param(&buf, &len, &cap, "Codec", "auto") &&
+        append_env_param(&buf, &len, &cap, "IDRPeriod", "60") &&
+        append_env_param(&buf, &len, &cap, "Bitrate", "10000000") &&
+        append_env_b64_param(&buf, &len, &cap, "HardwareH264Profile", "main") &&
+        append_env_b64_param(&buf, &len, &cap, "HardwareH264Level", "4.1") &&
+        append_env_b64_param(&buf, &len, &cap, "SoftwareH264Profile",
+                             "baseline") &&
+        append_env_b64_param(&buf, &len, &cap, "SoftwareH264Level", "4.1") &&
+        append_env_param(&buf, &len, &cap, "SecondaryWidth", "0") &&
+        append_env_param(&buf, &len, &cap, "SecondaryHeight", "0") &&
+        append_env_param(&buf, &len, &cap, "SecondaryFPS", "0.0") &&
+        append_env_param(&buf, &len, &cap, "SecondaryMJPEGQuality", "0");
 
     if (!ok) {
         free(buf);
