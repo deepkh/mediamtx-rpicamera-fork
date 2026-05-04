@@ -9,6 +9,8 @@ Build mediamtx-rpicamera on a Raspberry Pi running Debian 13 / Raspberry Pi OS T
 
 Options:
   --build-camera       Rebuild only repo source files with the existing Meson/Ninja setup.
+  --build-fake-pipe-reader
+                       Build only the fake PIPE_CONF_FD / PIPE_VIDEO_FD test harness.
   --external-libcamera  Build against the system libcamera instead of the bundled fallback.
   --skip-packages       Do not install apt packages.
   --clean               Remove previous build artifacts before configuring.
@@ -24,11 +26,15 @@ INSTALL_PACKAGES=1
 USE_EXTERNAL_LIBCAMERA=0
 CLEAN_BUILD=0
 BUILD_CAMERA_ONLY=0
+BUILD_FAKE_PIPE_READER_ONLY=0
 
 while (($# > 0)); do
     case "$1" in
         --build-camera)
             BUILD_CAMERA_ONLY=1
+            ;;
+        --build-fake-pipe-reader)
+            BUILD_FAKE_PIPE_READER_ONLY=1
             ;;
         --external-libcamera)
             USE_EXTERNAL_LIBCAMERA=1
@@ -147,6 +153,18 @@ build_camera() {
     print_output_path
 }
 
+build_fake_pipe_reader() {
+    if [[ ! -f "${BUILD_DIR}/build.ninja" ]]; then
+        echo "Existing build directory not found: ${BUILD_DIR}" >&2
+        echo "Run ./build.sh once before using --build-fake-pipe-reader." >&2
+        exit 1
+    fi
+
+    meson setup --reconfigure "${BUILD_DIR}"
+    ninja -C "${BUILD_DIR}" fake_pipe_reader
+    echo "Build complete: ${BUILD_DIR}/fake_pipe_reader"
+}
+
 main() {
     cd "${SCRIPT_DIR}"
 
@@ -154,6 +172,11 @@ main() {
 
     if ((BUILD_CAMERA_ONLY)); then
         build_camera
+        exit 0
+    fi
+
+    if ((BUILD_FAKE_PIPE_READER_ONLY)); then
+        build_fake_pipe_reader
         exit 0
     fi
 

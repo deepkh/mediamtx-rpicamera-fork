@@ -130,4 +130,10 @@ mtxrpicam = executable(
     install : true
 )
 
+fake_pipe_reader = executable(
+    'fake_pipe_reader',
+    'fake_pipe_reader.c',
+    install : false
+)
+
 meson.add_install_script('post_install.sh')
