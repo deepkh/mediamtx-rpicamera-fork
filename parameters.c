@@ -34,6 +34,10 @@ static void dump_sensor_mode(const char *name, const sensor_mode_t *mode) {
 }
 
 static void dump_parameters(const parameters_t *params) {
+    static int count = 0;
+    if (count++ % 10 != 0) {
+        return;
+    }
     printf("parameters_unserialize params:\n");
     printf("  log_level: %s\n", dump_str(params->log_level));
     printf("  camera_id: %u\n", params->camera_id);
