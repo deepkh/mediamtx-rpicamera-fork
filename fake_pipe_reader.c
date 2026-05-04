@@ -55,6 +55,44 @@ static bool read_full(int fd, void *buf, size_t size) {
     return true;
 }
 
+static void chdir_to_executable_dir(const char *argv0) {
+    char *path = realpath(argv0, NULL);
+    if (path == NULL) {
+        path = realpath("/proc/self/exe", NULL);
+    }
+    if (path == NULL) {
+        return;
+    }
+
+    char *slash = strrchr(path, '/');
+    if (slash != NULL) {
+        *slash = 0;
+        chdir(path);
+    }
+
+    free(path);
+}
+
+static const char *default_mtxrpicam_path(void) {
+    if (access("./mtxrpicam", X_OK) == 0) {
+        return "./mtxrpicam";
+    }
+    return "./build/mtxrpicam";
+}
+
+static const char *default_tuning_file(void) {
+    const char *env = getenv("MTXRPICAM_TUNING_FILE");
+    if (env != NULL && env[0] != 0) {
+        return env;
+    }
+
+    if (access("./share/libcamera/ipa/rpi/pisp/imx708_wide.json", R_OK) == 0) {
+        return "./share/libcamera/ipa/rpi/pisp/imx708_wide.json";
+    }
+
+    return "/usr/share/libcamera/ipa/rpi/pisp/imx708_wide.json";
+}
+
 static void prepend_ld_library_path(const char *path) {
     const char *old_path = getenv("LD_LIBRARY_PATH");
     char new_path[4096];
@@ -176,6 +214,7 @@ static char *build_parameters(void) {
     char *buf = NULL;
     size_t len = 0;
     size_t cap = 0;
+    const char *tuning_file = default_tuning_file();
 
     bool ok =
         append_b64_param(&buf, &len, &cap, "LogLevel", "info") &&
@@ -199,8 +238,7 @@ static char *build_parameters(void) {
         append_param(&buf, &len, &cap, "EV", "0.0") &&
         append_b64_param(&buf, &len, &cap, "ROI", "") &&
         append_param(&buf, &len, &cap, "HDR", "0") &&
-        append_b64_param(&buf, &len, &cap, "TuningFile",
-                         "/usr/share/libcamera/ipa/rpi/pisp/imx708_wide.json") &&
+        append_b64_param(&buf, &len, &cap, "TuningFile", tuning_file) &&
         append_b64_param(&buf, &len, &cap, "Mode", "") &&
         append_param(&buf, &len, &cap, "FPS", "60.0") &&
         append_b64_param(&buf, &len, &cap, "AfMode", "manual") &&
@@ -274,7 +312,8 @@ static void drain_video_pipe(int fd) {
 }
 
 int main(int argc, char **argv) {
-    const char *mtxrpicam_path = argc >= 2 ? argv[1] : "./build/mtxrpicam";
+    chdir_to_executable_dir(argv[0]);
+    const char *mtxrpicam_path = argc >= 2 ? argv[1] : default_mtxrpicam_path();
     int conf_pipe[2];
     int video_pipe[2];
 
@@ -304,6 +343,7 @@ int main(int argc, char **argv) {
         snprintf(video_fd, sizeof(video_fd), "%d", video_pipe[1]);
         setenv("PIPE_CONF_FD", conf_fd, 1);
         setenv("PIPE_VIDEO_FD", video_fd, 1);
+        prepend_ld_library_path("./build/subprojects/libcamera/src/libcamera/base");
         prepend_ld_library_path("./build/subprojects/libcamera/src/libcamera");
         prepend_ld_library_path("./subprojects/libcamera/src/libcamera");
         set_libpisp_config_file();
