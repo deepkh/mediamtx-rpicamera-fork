@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <inttypes.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -226,7 +227,8 @@ static bool append_env_param(char **buf, size_t *len, size_t *cap,
                              const char *key, const char *default_value) {
     const char *value = getenv(key);
 
-    return append_param(buf, len, cap, key, value != NULL ? value : default_value);
+    return append_param(buf, len, cap, key,
+                        value != NULL ? value : default_value);
 }
 
 static bool append_env_b64_param(char **buf, size_t *len, size_t *cap,
@@ -309,32 +311,32 @@ static bool write_packet(int fd, char kind, const char *payload) {
            write_full(fd, payload, strlen(payload));
 }
 
-static bool discard_packet_payload(int fd, uint32_t size) {
-    uint8_t buf[64 * 1024];
+static int32_t discard_packet_payload(int fd, uint32_t size) {
+    static uint8_t buf[64 * 1024];
+    int32_t payload_size = size;
 
     while (size > 0) {
         size_t chunk = size < sizeof(buf) ? size : sizeof(buf);
         if (!read_full(fd, buf, chunk)) {
-            return false;
+            return -1;
         }
         size -= (uint32_t)chunk;
     }
 
-    return true;
+    return payload_size;
 }
 
-static bool read_video_packet(int fd, char *kind, uint64_t *timestamp) {
+static int32_t read_video_packet(int fd, char *kind, uint64_t *timestamp) {
     uint32_t size;
 
     if (!read_full(fd, &size, sizeof(size)) || size < 1) {
-        return false;
+        return -1;
     }
 
     if (!read_full(fd, kind, sizeof(*kind))) {
-        return false;
+        return -1;
     }
     size--;
-
     *timestamp = 0;
     if ((*kind == 'd' || *kind == 's') && size >= sizeof(*timestamp)) {
         if (!read_full(fd, timestamp, sizeof(*timestamp))) {
@@ -356,12 +358,13 @@ static void drain_video_pipe(int fd) {
     int fps_values[256] = {0};
     unsigned int diff_index = 0;
     unsigned int diff_count = 0;
+    int32_t video_frame_size = 0;
 
     while (!stopped) {
         char kind;
         uint64_t packet_ts;
 
-        if (!read_video_packet(fd, &kind, &packet_ts)) {
+        if ((video_frame_size = read_video_packet(fd, &kind, &packet_ts)) < 0) {
             break;
         }
         if (kind != 'd') {
@@ -387,7 +390,7 @@ static void drain_video_pipe(int fd) {
         }
         prev_frame_ts = now;
 
-        if (frame_count % 10 == 0) {
+        if (true || frame_count % 10 == 0) {
             double avg_diff = 0.0;
             double avg_fps = 0.0;
             double min_diff = 0.0;
@@ -423,10 +426,11 @@ static void drain_video_pipe(int fd) {
                 avg_fps /= avg_count;
             }
 
-            printf("Frame:%lu, Fps:%d AvgFps:%.1f/%d/%d ts:%.3f "
-                   "Diff:%.3f AvgDiff:%.3f/%.3f/%.3f\n",
-                   frame_count, fps, avg_fps, min_fps, max_fps, now, diff,
-                   avg_diff, min_diff, max_diff);
+            printf(
+                "Frame:%lu, Fps:%d AvgFps:%.1f/%d/%d "
+                "AvgDiff:%.3f/%.3f/%.3f ts:%.3f Diff:%.3f kind:'%c' size:%d\n",
+                frame_count, fps, avg_fps, min_fps, max_fps, avg_diff, min_diff,
+                max_diff, now, diff, kind, video_frame_size);
             fflush(stdout);
         }
     }
