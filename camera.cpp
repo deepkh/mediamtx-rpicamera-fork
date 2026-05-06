@@ -521,9 +521,10 @@ static void fill_dynamic_controls(ControlList *ctrls,
 
     ctrls->set(controls::ExposureValue, params->ev);
 
-    int64_t frame_time = (int64_t)(((float)1000000) / params->fps);
+    int64_t min_frame_time = (int64_t)(1000000.0f / params->max_fps);
+    int64_t max_frame_time = (int64_t)(1000000.0f / params->min_fps);
     ctrls->set(controls::FrameDurationLimits,
-               Span<const int64_t, 2>({frame_time, frame_time}));
+               Span<const int64_t, 2>({min_frame_time, max_frame_time}));
 }
 
 bool camera_start(camera_t *cam, parameters_t *params) {

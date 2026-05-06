@@ -205,7 +205,7 @@ bool encoder_hardware_h264_create(const parameters_t *params, int stride,
     struct v4l2_streamparm parm = {0};
     parm.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
     parm.parm.output.timeperframe.numerator = 1;
-    parm.parm.output.timeperframe.denominator = params->fps;
+    parm.parm.output.timeperframe.denominator = params->max_fps;
     res = ioctl(encp->fd, VIDIOC_S_PARM, &parm);
     if (res != 0) {
         set_error("unable to set fps");

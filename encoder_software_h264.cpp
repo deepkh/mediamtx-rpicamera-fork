@@ -115,7 +115,7 @@ bool encoder_software_h264_create(const parameters_t *params, int stride,
     encp->encoder->GetDefaultParams(&encp->enc_params);
 
     encp->enc_params.iUsageType = CAMERA_VIDEO_REAL_TIME;
-    encp->enc_params.fMaxFrameRate = params->fps;
+    encp->enc_params.fMaxFrameRate = params->max_fps;
     encp->enc_params.iPicWidth = params->width;
     encp->enc_params.iPicHeight = params->height;
     encp->enc_params.iTargetBitrate = params->bitrate;
@@ -142,7 +142,7 @@ bool encoder_software_h264_create(const parameters_t *params, int stride,
 
     encp->enc_params.sSpatialLayers[0].iVideoWidth = params->width;
     encp->enc_params.sSpatialLayers[0].iVideoHeight = params->height;
-    encp->enc_params.sSpatialLayers[0].fFrameRate = params->fps;
+    encp->enc_params.sSpatialLayers[0].fFrameRate = params->max_fps;
     encp->enc_params.sSpatialLayers[0].iSpatialBitrate = params->bitrate;
     encp->enc_params.sSpatialLayers[0].iMaxSpatialBitrate =
         (int)((double)params->bitrate * 1.2f);

@@ -269,7 +269,8 @@ static char *build_parameters(void) {
         append_env_param(&buf, &len, &cap, "HDR", "0") &&
         append_env_b64_param(&buf, &len, &cap, "TuningFile", tuning_file) &&
         append_env_b64_param(&buf, &len, &cap, "Mode", "") &&
-        append_env_param(&buf, &len, &cap, "FPS", "60.0") &&
+        append_env_param(&buf, &len, &cap, "MinFPS", "5.0") &&
+        append_env_param(&buf, &len, &cap, "MaxFPS", "60.0") &&
         append_env_b64_param(&buf, &len, &cap, "AfMode", "manual") &&
         append_env_b64_param(&buf, &len, &cap, "AfRange", "normal") &&
         append_env_b64_param(&buf, &len, &cap, "AfSpeed", "normal") &&

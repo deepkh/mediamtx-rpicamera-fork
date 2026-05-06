@@ -31,7 +31,8 @@ typedef struct {
     bool hdr;
     char *tuning_file;
     sensor_mode_t *mode;
-    float fps;
+    float min_fps;
+    float max_fps;
     char *af_mode;
     char *af_range;
     char *af_speed;

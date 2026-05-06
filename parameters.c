@@ -60,7 +60,8 @@ static void dump_parameters(const parameters_t *params) {
     printf("  tuning_file: %s\n", dump_str(params->tuning_file));
     printf("  ");
     dump_sensor_mode("mode", params->mode);
-    printf("  fps: %f\n", params->fps);
+    printf("  min_fps: %f\n", params->min_fps);
+    printf("  max_fps: %f\n", params->max_fps);
     printf("  af_mode: %s\n", dump_str(params->af_mode));
     printf("  af_range: %s\n", dump_str(params->af_range));
     printf("  af_speed: %s\n", dump_str(params->af_speed));
@@ -177,8 +178,13 @@ bool parameters_unserialize(const uint8_t *buf, size_t buf_size,
                 }
             }
             free(decoded_val);
+        } else if (strcmp(key, "MinFPS") == 0) {
+            (*params)->min_fps = atof(val);
+        } else if (strcmp(key, "MaxFPS") == 0) {
+            (*params)->max_fps = atof(val);
         } else if (strcmp(key, "FPS") == 0) {
-            (*params)->fps = atof(val);
+            (*params)->min_fps = atof(val);
+            (*params)->max_fps = atof(val);
         } else if (strcmp(key, "AfMode") == 0) {
             (*params)->af_mode = base64_decode(val);
         } else if (strcmp(key, "AfRange") == 0) {
@@ -232,6 +238,15 @@ bool parameters_unserialize(const uint8_t *buf, size_t buf_size,
 
     free(copy);
 
+    if ((*params)->min_fps <= 0.0f || (*params)->max_fps <= 0.0f) {
+        set_error("MinFPS and MaxFPS must be greater than 0");
+        goto failed_no_copy;
+    }
+    if ((*params)->min_fps > (*params)->max_fps) {
+        set_error("MinFPS must be less than or equal to MaxFPS");
+        goto failed_no_copy;
+    }
+
     (*params)->buffer_count = 3;
     const char *buffer_count_env = getenv("buffer_count");
     if (buffer_count_env != NULL) {
@@ -248,6 +263,7 @@ bool parameters_unserialize(const uint8_t *buf, size_t buf_size,
 
 failed:
     free(copy);
+failed_no_copy:
     parameters_destroy(*params);
 
     return false;
