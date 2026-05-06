@@ -233,6 +233,14 @@ bool parameters_unserialize(const uint8_t *buf, size_t buf_size,
     free(copy);
 
     (*params)->buffer_count = 3;
+    const char *buffer_count_env = getenv("buffer_count");
+    if (buffer_count_env != NULL) {
+        unsigned int buffer_count = atoi(buffer_count_env);
+        if (buffer_count > 0) {
+            (*params)->buffer_count = buffer_count;
+        }
+    }
+    printf("============== buffer_conut:%d\n", (*params)->buffer_count);
 #if 1
     dump_parameters(*params);
 #endif

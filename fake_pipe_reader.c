@@ -427,10 +427,10 @@ static void drain_video_pipe(int fd) {
             }
 
             printf(
-                "Frame:%lu, Fps:%d AvgFps:%.1f/%d/%d "
+                "Frame:%07lu, Fps:%02d AvgFps:%04.1f/%04.1f/%04.1f "
                 "AvgDiff:%.3f/%.3f/%.3f ts:%.3f Diff:%.3f kind:'%c' size:%d\n",
-                frame_count, fps, avg_fps, min_fps, max_fps, avg_diff, min_diff,
-                max_diff, now, diff, kind, video_frame_size);
+                frame_count, fps, avg_fps, (double)min_fps, (double)max_fps,
+                avg_diff, min_diff, max_diff, now, diff, kind, video_frame_size);
             fflush(stdout);
         }
     }
