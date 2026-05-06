@@ -32,6 +32,9 @@ void pipe_write_data(int fd, const uint8_t *mapped, uint32_t size,
     write(fd, &size, 4);
     write(fd, head, 1);
     write(fd, &ts, sizeof(uint64_t));
+    if (getenv("NO_PAYLOAD_WRITE")) {
+        return;
+    }
     write(fd, mapped, size - 1 - sizeof(uint64_t));
 }
 

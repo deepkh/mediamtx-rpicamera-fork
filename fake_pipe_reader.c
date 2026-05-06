@@ -311,9 +311,212 @@ static bool write_packet(int fd, char kind, const char *payload) {
            write_full(fd, payload, strlen(payload));
 }
 
-static int32_t discard_packet_payload(int fd, uint32_t size) {
+static size_t h264_start_code_size(const uint8_t *buf, size_t size,
+                                   size_t offset) {
+    if (offset + 3 <= size && buf[offset] == 0x00 &&
+        buf[offset + 1] == 0x00 && buf[offset + 2] == 0x01) {
+        return 3;
+    }
+    if (offset + 4 <= size && buf[offset] == 0x00 &&
+        buf[offset + 1] == 0x00 && buf[offset + 2] == 0x00 &&
+        buf[offset + 3] == 0x01) {
+        return 4;
+    }
+    return 0;
+}
+
+typedef struct {
+    const uint8_t *data;
+    size_t size;
+    size_t bit_offset;
+} bit_reader_t;
+
+static bool bit_reader_read_bit(bit_reader_t *reader, uint8_t *bit) {
+    if (reader->bit_offset >= reader->size * 8) {
+        return false;
+    }
+
+    size_t byte_offset = reader->bit_offset / 8;
+    size_t bit_offset = 7 - (reader->bit_offset % 8);
+    *bit = (reader->data[byte_offset] >> bit_offset) & 0x01;
+    reader->bit_offset++;
+    return true;
+}
+
+static bool bit_reader_read_ue(bit_reader_t *reader, uint32_t *value) {
+    uint32_t leading_zero_bits = 0;
+    uint8_t bit;
+
+    while (true) {
+        if (!bit_reader_read_bit(reader, &bit)) {
+            return false;
+        }
+        if (bit != 0) {
+            break;
+        }
+        leading_zero_bits++;
+        if (leading_zero_bits >= 32) {
+            return false;
+        }
+    }
+
+    *value = (1u << leading_zero_bits) - 1u;
+    for (uint32_t i = 0; i < leading_zero_bits; i++) {
+        if (!bit_reader_read_bit(reader, &bit)) {
+            return false;
+        }
+        *value += bit << (leading_zero_bits - i - 1);
+    }
+
+    return true;
+}
+
+static size_t h264_copy_rbsp(const uint8_t *nal_payload, size_t nal_payload_size,
+                             uint8_t *rbsp, size_t rbsp_size) {
+    size_t rbsp_len = 0;
+    unsigned int zero_count = 0;
+
+    for (size_t i = 0; i < nal_payload_size && rbsp_len < rbsp_size; i++) {
+        if (zero_count >= 2 && nal_payload[i] == 0x03) {
+            zero_count = 0;
+            continue;
+        }
+
+        rbsp[rbsp_len++] = nal_payload[i];
+        if (nal_payload[i] == 0x00) {
+            zero_count++;
+        } else {
+            zero_count = 0;
+        }
+    }
+
+    return rbsp_len;
+}
+
+static const char *h264_slice_type_name(const uint8_t *nal_payload,
+                                        size_t nal_payload_size) {
+    uint8_t rbsp[64];
+    size_t rbsp_len =
+        h264_copy_rbsp(nal_payload, nal_payload_size, rbsp, sizeof(rbsp));
+    uint32_t first_mb_in_slice;
+    uint32_t slice_type;
+    bit_reader_t reader = {rbsp, rbsp_len, 0};
+
+    if (!bit_reader_read_ue(&reader, &first_mb_in_slice) ||
+        !bit_reader_read_ue(&reader, &slice_type)) {
+        return NULL;
+    }
+
+    switch (slice_type % 5) {
+    case 0:
+        return "P";
+    case 1:
+        return "B";
+    case 2:
+        return "I";
+    case 3:
+        return "SP";
+    case 4:
+        return "SI";
+    default:
+        return NULL;
+    }
+}
+
+static const char *h264_nalu_info_name(uint8_t type) {
+    switch (type) {
+    case 6:
+        return "SEI";
+    case 7:
+        return "SPS";
+    case 8:
+        return "PPS";
+    case 9:
+        return "AUD";
+    default:
+        return NULL;
+    }
+}
+
+static void append_nalu_info(char *nalu_info, size_t nalu_info_size,
+                             const char *info) {
+    size_t len = strlen(nalu_info);
+    int written;
+
+    if (len >= nalu_info_size) {
+        return;
+    }
+
+    written = snprintf(&nalu_info[len], nalu_info_size - len, "%s%s",
+                       len > 0 ? " " : "", info);
+    if (written < 0 || (size_t)written >= nalu_info_size - len) {
+        nalu_info[nalu_info_size - 1] = 0;
+    }
+}
+
+static void collect_h264_nalu_info(const uint8_t *buf, size_t size,
+                                   char *nalu_info,
+                                   size_t nalu_info_size) {
+    for (size_t i = 0; i < size; i++) {
+        size_t start_code_size = h264_start_code_size(buf, size, i);
+        if (start_code_size == 0) {
+            continue;
+        }
+
+        size_t header_offset = i + start_code_size;
+        if (header_offset >= size) {
+            break;
+        }
+
+        uint8_t header = buf[header_offset];
+        uint8_t type = header & 0x1f;
+        size_t next_start_code_offset = size;
+        for (size_t j = header_offset + 1; j < size; j++) {
+            if (h264_start_code_size(buf, size, j) > 0) {
+                next_start_code_offset = j;
+                break;
+            }
+        }
+
+        const char *info = h264_nalu_info_name(type);
+        if (info != NULL) {
+            append_nalu_info(nalu_info, nalu_info_size, info);
+        }
+        if (type == 1 || type == 5) {
+            const char *slice_type = h264_slice_type_name(
+                &buf[header_offset + 1],
+                next_start_code_offset - header_offset - 1);
+            if (slice_type != NULL) {
+                append_nalu_info(nalu_info, nalu_info_size, slice_type);
+            }
+        }
+        i = header_offset;
+    }
+}
+
+static int32_t discard_packet_payload(int fd, uint32_t size, char kind,
+                                      char *nalu_info,
+                                      size_t nalu_info_size) {
     static uint8_t buf[64 * 1024];
     int32_t payload_size = size;
+
+    if (getenv("NO_PAYLOAD_WRITE")) {
+        return 0;
+    }
+
+    if (kind == 'd') {
+        uint8_t *payload = (uint8_t *)malloc(size);
+        if (payload == NULL) {
+            return -1;
+        }
+        if (!read_full(fd, payload, size)) {
+            free(payload);
+            return -1;
+        }
+        collect_h264_nalu_info(payload, size, nalu_info, nalu_info_size);
+        free(payload);
+        return payload_size;
+    }
 
     while (size > 0) {
         size_t chunk = size < sizeof(buf) ? size : sizeof(buf);
@@ -326,7 +529,9 @@ static int32_t discard_packet_payload(int fd, uint32_t size) {
     return payload_size;
 }
 
-static int32_t read_video_packet(int fd, char *kind, uint64_t *timestamp) {
+static int32_t read_video_packet(int fd, char *kind, uint64_t *timestamp,
+                                 char *nalu_info,
+                                 size_t nalu_info_size) {
     uint32_t size;
 
     if (!read_full(fd, &size, sizeof(size)) || size < 1) {
@@ -345,7 +550,7 @@ static int32_t read_video_packet(int fd, char *kind, uint64_t *timestamp) {
         size -= sizeof(*timestamp);
     }
 
-    return discard_packet_payload(fd, size);
+    return discard_packet_payload(fd, size, *kind, nalu_info, nalu_info_size);
 }
 
 static void drain_video_pipe(int fd) {
@@ -363,8 +568,11 @@ static void drain_video_pipe(int fd) {
     while (!stopped) {
         char kind;
         uint64_t packet_ts;
+        char nalu_info[128] = {0};
 
-        if ((video_frame_size = read_video_packet(fd, &kind, &packet_ts)) < 0) {
+        if ((video_frame_size =
+                 read_video_packet(fd, &kind, &packet_ts, nalu_info,
+                                   sizeof(nalu_info))) < 0) {
             break;
         }
         if (kind != 'd') {
@@ -428,9 +636,10 @@ static void drain_video_pipe(int fd) {
 
             printf(
                 "Frame:%07lu, Fps:%02d AvgFps:%04.1f/%04.1f/%04.1f "
-                "AvgDiff:%.3f/%.3f/%.3f ts:%.3f Diff:%.3f kind:'%c' size:%d\n",
+                "AvgDiff:%.3f/%.3f/%.3f ts:%.3f Diff:%.3f kind:'%c' size:%08d%s%s\n",
                 frame_count, fps, avg_fps, (double)min_fps, (double)max_fps,
-                avg_diff, min_diff, max_diff, now, diff, kind, video_frame_size);
+                avg_diff, min_diff, max_diff, now, diff, kind,
+                video_frame_size, nalu_info[0] != 0 ? " " : "", nalu_info);
             fflush(stdout);
         }
     }
